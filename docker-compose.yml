@@ -1,0 +1,105 @@
+name: deohost
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: deohost-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deohost
+      POSTGRES_PASSWORD: deohost
+      POSTGRES_DB: deohost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - deohost-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deohost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deohost-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://derohost:derohost@postgres:5432/derohost?schema=public
+      - NODE_API_PORT=8080
+      - STORAGE_PATH=/app/storage
+      - BACKUP_PATH=/app/backups
+      - SERVERS_PATH=/app/servers
+    volumes:
+      - api_storage:/app/storage
+      - api_backups:/app/backups
+      - api_servers:/app/servers
+    ports:
+      - "8080:8080"
+    networks:
+      - deohost-network
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: deohost-web
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8080/api
+    ports:
+      - "3000:3000"
+    networks:
+      - deohost-network
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: deohost-agent
+    restart: unless-stopped
+    environment:
+      - NODE_API_PORT=8081
+      - SERVERS_PATH=/app/servers
+    volumes:
+      - agent_servers:/app/servers
+    ports:
+      - "8081:8081"
+    networks:
+      - deohost-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: deohost-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - nginx_certbot_etc:/etc/letsencrypt
+      - nginx_certbot_var:/var/lib/letsencrypt
+    networks:
+      - deohost-network
+
+volumes:
+  postgres_data:
+  api_storage:
+  api_backups:
+  api_servers:
+  agent_servers:
+  nginx_certbot_etc:
+  nginx_certbot_var:
+
+networks:
+  deohost-network:
+    driver: bridge
