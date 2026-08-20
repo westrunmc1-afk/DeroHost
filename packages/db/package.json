@@ -1,0 +1,12 @@
+{
+  "name": "@derohost/db",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "prisma generate --schema prisma/schema.prisma",
+    "db:push": "prisma db push --schema prisma/schema.prisma"
+  },
+  "devDependencies": {
+    "prisma": "^5.19.0"
+  }
+}

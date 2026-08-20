@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String    @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  role          Role      @default(USER)
+  language      String?   @default("en")
+  theme         String?   @default("dark")
+  avatar        String?
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret String?
+  emailVerified Boolean   @default(false)
+  emailVerificationToken String?
+  resetPasswordToken String?
+  resetPasswordExpires DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  ip            String?
+  userAgent     String?
+
+  sessions      Session[]
+  servers       Server[]  @relation("UserServers")
+  subusers      ServerSubuser[]
+  backups       Backup[]  @relation("UserBackups")
+  files         UploadedFile[]
+  activity      ActivityLog[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  USER
+}
+
+model Session {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token         String    @unique
+  ip            String?
+  userAgent     String?
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  lastActivity  DateTime  @default(now())
+}
+
+model Node {
+  id            String    @id @default(cuid())
+  name          String
+  uuid          String    @unique
+  ip            String
+  port          Int       @default(8080)
+  apiSecret     String
+  ram           Int       @default(49152)
+  disk          Int       @default(10000000)
+  cpu           String    @default("Ryzen 7")
+  location      String
+  description   String?
+  status        NodeStatus @default(OFFLINE)
+  version       String?
+  os            String?
+  javaVersions  String?
+  dockerStatus  String?
+  cpuUsage      Float?    @default(0)
+  ramUsage      Float?    @default(0)
+  diskUsage     Float?    @default(0)
+  networkUsage  Float?    @default(0)
+  serverCount   Int?      @default(0)
+  lastHeartbeat DateTime?
+  secure        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  servers       Server[]
+  allocations   Allocation[]
+}
+
+enum NodeStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+model Server {
+  id              String     @id @default(cuid())
+  uuid            String     @unique
+  name            String
+  description     String?
+  ownerId         String
+  owner           User       @relation("UserServers", fields: [ownerId], references: [id])
+  nodeId          String
+  node            Node       @relation(fields: [nodeId], references: [id])
+  port            Int
+  ram             Int
+  cpu             Int        @default(100)
+  disk            Int
+  minecraftVersion String
+  software        ServerSoftware
+  startupCommand  String
+  env             Json?
+  directory       String?
+  status          ServerStatus @default(OFFLINE)
+  javaVersion     String?
+  autoRestart     Boolean    @default(false)
+  crashRestart    Boolean    @default(false)
+  maxCrashRestarts Int       @default(5)
+  restartDelay    Int        @default(30)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  startedAt       DateTime?
+  stoppedAt       DateTime?
+
+  subusers        ServerSubuser[]
+  backups         Backup[]
+  files           UploadedFile[]
+  plugins         ServerPlugin[]
+  activity        ActivityLog[]
+  allocations     ServerAllocation[]
+}
+
+enum ServerSoftware {
+  PAPER
+  SPIGOT
+  FABRIC
+  FORGE
+  VELOCITY
+  BUNGEECORD
+  WATERFALL
+  CUSTOM
+}
+
+enum ServerStatus {
+  OFFLINE
+  ONLINE
+  STARTING
+  STOPPING
+  RESTARTING
+  CRASHED
+  INSTALLING
+  SUSPENDED
+}
+
+model ServerSubuser {
+  id              String    @id @default(cuid())
+  serverId        String
+  server          Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  permissions     String    @default("[]")
+  createdAt       DateTime  @default(now())
+  accepted        Boolean   @default(false)
+  inviteToken     String?   @unique
+
+  @@unique([serverId, userId])
+}
+
+model Allocation {
+  id            String    @id @default(cuid())
+  nodeId        String
+  node          Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  port          Int
+  ip            String?
+  proxyable     Boolean   @default(false)
+  assigned      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  serverAllocations ServerAllocation[]
+
+  @@unique([nodeId, port])
+}
+
+model ServerAllocation {
+  id            String    @id @default(cuid())
+  serverId      String
+  server        Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  allocationId  String
+  allocation    Allocation @relation(fields: [allocationId], references: [id])
+  createdAt     DateTime  @default(now())
+
+  @@unique([serverId, allocationId])
+}
+
+model Backup {
+  id              String     @id @default(cuid())
+  uuid            String     @unique
+  serverId        String
+  server          Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name            String
+  filename        String
+  size            Int?
+  bytes           Int?
+  checksum        String?
+  status          BackupStatus @default(PENDING)
+  createdAt       DateTime   @default(now())
+  completedAt     DateTime?
+  createdById     String
+  createdBy       User       @relation("UserBackups", fields: [createdById], references: [id])
+  downloadUrl     String?
+
+  @@index([serverId])
+}
+
+enum BackupStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model ServerPlugin {
+  id              String    @id @default(cuid())
+  serverId        String
+  server          Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name            String
+  version         String
+  source          String
+  modrinthId      String?
+  downloadUrl     String?
+  installedAt     DateTime  @default(now())
+  enabled         Boolean   @default(true)
+
+  @@index([serverId])
+}
+
+model UploadedFile {
+  id            String    @id @default(cuid())
+  uploaderId    String
+  uploader      User      @relation(fields: [uploaderId], references: [id])
+  serverId      String
+  server        Server    @relation(fields: [serverId], references: [id])
+  filename      String
+  originalName  String
+  path          String
+  size          Int
+  mimeType      String?
+  createdAt     DateTime  @default(now())
+
+  @@index([serverId])
+}
+
+model ActivityLog {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  action        String
+  description   String?
+  serverId      String?
+  server        Server?   @relation(fields: [serverId], references: [id])
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  level         LogLevel  @default(INFO)
+
+  @@index([serverId])
+  @@index([createdAt])
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+}
+
+model Settings {
+  id            String    @id @default(cuid())
+  key           String    @unique
+  value         String
+  type          SettingType @default(STRING)
+  group         String?
+  description   String?
+  editable      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([group])
+}
+
+enum SettingType {
+  STRING
+  BOOLEAN
+  NUMBER
+  JSON
+  ARRAY
+}
+
+model Announcement {
+  id            String    @id @default(cuid())
+  title         String
+  content       String
+  active        Boolean   @default(true)
+  priority      Int       @default(0)
+  startsAt      DateTime  @default(now())
+  endsAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([active, priority])
+}
+
+model ModrinthCache {
+  id            String    @id @default(cuid())
+  projectId     String
+  versionId     String
+  name          String
+  versionNumber String
+  downloadUrl   String
+  fileName      String
+  sha512        String?
+  primary       Boolean   @default(false)
+  dependencies  String?
+  minecraftVersions String?
+  loaders       String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([projectId, versionId])
+  @@index([projectId])
+}
+
+model NodeMetric {
+  id            String    @id @default(cuid())
+  nodeId        String
+  cpu           Float
+  ramUsed       Float
+  ramTotal      Float
+  diskUsed      Float
+  diskTotal     Float
+  networkRx     Float?
+  networkTx     Float?
+  timestamp     DateTime  @default(now())
+
+  @@index([nodeId, timestamp])
+}
